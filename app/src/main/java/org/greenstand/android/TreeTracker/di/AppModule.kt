@@ -241,7 +241,7 @@ val appModule =
 
         factory { UploadImageUseCase(get()) }
 
-        factory { UploadLocationDataUseCase(get(), get()) }
+        factory { UploadLocationDataUseCase(get(), get(), get()) }
 
         factory { CreateTreeUseCase(get(), get(), get()) }
 
