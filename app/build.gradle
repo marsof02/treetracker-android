@@ -300,6 +300,10 @@ dependencies {
     testImplementation libs.bundles.roborazzi
     testImplementation libs.androidx.compose.ui.test.junit4
     debugImplementation libs.androidx.compose.ui.test.manifest
+
+    // UI testing
+    androidTestImplementation libs.androidx.compose.ui.test.junit4
+    androidTestImplementation libs.androidx.test.ext.junit
 }
 
 configurations.all {
