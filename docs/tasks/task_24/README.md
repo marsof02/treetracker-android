@@ -1,57 +1,76 @@
-# Task 24 — Split monolithic TreeTrackerDAO into entity-specific DAOs (#1235)
+# Task 24 - Migrate from Navigation 2 to Navigation 3
 
-Branch: `refactor/split-tree-tracker-dao` · PR #1303
 ## Goal
 
-`TreeTrackerDAO` is a single Room interface covering 10 entity groups and is injected
-into ~25 production classes. Splitting it into entity-specific DAOs improves testability,
-narrows change impact, and matches the existing `entity/` and `legacy/entity/` layout.
-
-Split `TreeTrackerDAO` (~385 lines) into focused Room DAOs:
-
-1. `TreeDAO` — current `tree` table
-2. `UserDAO` — `user`
-3. `SessionDAO` — `session`
-4. `OrganizationDAO` — `organization`
-5. `DeviceConfigDAO` — `device_config`
-6. `PlanterDAO` — legacy `planter_info` and `planter_check_in`
-7. `LocationDAO` — `location` and legacy `location_data`
-
-Update AppDatabase and RoomModule to expose and wire the new DAOs.
-
-## PR plan
-| PR | Scope |
-|---|---|
-| 1 | Add DAO interfaces + `AppDatabase`/`RoomModule` wiring; keep `TreeTrackerDAO` |
-| 2 | Migrate org, device config, user |
-| 3 | Migrate session + tree |
-| 4 | Migrate legacy planter + tree capture |
-| 5 | Migrate location + sync/dashboard |
-| 6 | Remove `TreeTrackerDAO`, split tests |
+Replace Jetpack Navigation 2 (`androidx.navigation:navigation-compose`) with
+Navigation 3 (`androidx.navigation3`) across the whole app, preserving every
+existing navigation behavior.
 
 ## Changes
 
-### Infrastructure
+- Bumped Compose 1.7.5 → 1.10.5 and compileSdk 35 → 36 (required by
+  navigation3-ui 1.1.1); `material-icons-extended` pinned to 1.7.8 (its last
+  published version). Landed as an isolated first commit.
+- All 29 routes in `navigation/Routes.kt` now implement `NavKey` (still
+  `@Serializable`).
+- New `navigation/Navigator.kt`: app-owned back stack operations replacing
+  `NavHostController` — `navigate` with a `NavOptions` DSL (`popUpTo<T>`,
+  `popUpToRoot()` replacing `popUpTo(graph.id)`, `launchSingleTop`),
+  `popBackStack`, `popBackStackTo<T>(inclusive)`, and throttled variants
+  keeping the 300 ms debounce from the deleted `utilities/NavigationUtils.kt`.
+  Exposed via `LocalNavigator` (replacing `LocalNavHostController`).
+- Nav2's "only navigate while RESUMED" guard is replaced by the debounce plus
+  an origin-is-top check in `HandleUIEvents`: ViewModel navigation events only
+  execute when the emitting entry is the top of the back stack (via
+  `LocalNavEntryContentKey`).
+- `root/Host.kt`: `NavHost` → `NavDisplay` with `rememberNavBackStack`,
+  saveable-state + ViewModel-store decorators (per-entry ViewModel scoping),
+  and explicit 500 ms fade transition specs matching the previous look.
+- `trackedComposable` replaced by a custom
+  `rememberScreenTrackingNavEntryDecorator()` (`NavEntryDecorator`) that keeps
+  Crashlytics screen breadcrumbs and provides `LocalNavEntryContentKey`.
+- Deep link (`app://mobile.treetracker.org/org?...`) reimplemented manually
+  (Nav3 has no deep link support): `navigation/OrgDeepLink.kt` parses the
+  launch intent in `TreeTrackerActivity` into the `SplashRoute` start key.
+  Cold-start-only, matching pre-migration behavior.
+- `ImageCaptureActivity`'s standalone selfie NavHost migrated to its own
+  `NavDisplay`.
+- `CaptureFlowNavigationController` / `CaptureSetupNavigationController` and
+  ~25 screens switched from `NavHostController` to `Navigator`; route
+  resolution (`RouteRegistry`, `FlowNavigationController`) tightened from
+  `Any` to `NavKey`.
+- `NavigationEvent` now carries a `suspend Navigator.() -> Unit`; existing
+  ViewModel tests pass unchanged. New `NavigatorTest` covers popUpTo
+  (inclusive/exclusive/absent), singleTop replace, popUpToRoot, popBackStackTo,
+  root-pop refusal, and the throttle window via a fake clock.
+- Removed `androidx-navigation-compose` from the version catalog; zero
+  `androidx.navigation.` imports remain.
 
-- Add `database/dao/` (and `database/dao/legacy/` for legacy aggregates).
-- Register each DAO on `AppDatabase`.
-- Wire each DAO in `RoomModule` (Koin).
-- Keep `TreeTrackerDAO` temporarily during migration, then remove it.
+## Emulator smoke test findings
 
-### Tests
+- `NavDisplay` crashed on launch with "No NavigationEventDispatcher was
+  provided": Navigation 3's back handling needs a `NavigationEventDispatcherOwner`.
+  Fixed by bumping `androidx.activity` to 1.12.0 (where `ComponentActivity`
+  implements the owner) and planting the view-tree owner manually in
+  `TreeTrackerActivity` — `AppCompatActivity.setContentView` (appcompat 1.7.x)
+  predates navigationevent and only plants the four older view-tree owners.
+- Verified on a Pixel 7 API 35 emulator: cold start, splash auto-navigation,
+  signup-flow back handling, and deep-link cold start
+  (`OrgLink: Deeplink received: orgId=..., orgName=...`) all work; no crashes.
 
-- Split `TreeTrackerDaoTest` into per-DAO tests.
-- Update ~17 test files that mock `TreeTrackerDAO` to mock the relevant DAO(s).
+## Behavior notes
 
-## Out of scope (next stacks)
-
-- Room schema changes (DB stays at version 9).
-- Repository layer introduction — this task is DAO + wiring + caller migration only.
-- Merging `UserDAO` with `PlanterDAO` — different domain eras (v2 vs legacy).
+- `launchSingleTop` is implemented as replace-top: a match with different
+  arguments recreates the entry (unobservable for current call sites).
+- A navigation issued 300–500 ms after the previous one (mid-fade) now
+  succeeds where the old RESUMED check would drop it.
+- Predictive back gesture previews now animate with the same 500 ms fade.
 
 ## Verification
 
-- `./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin`
-- `./gradlew :app:testDebugUnitTest`
-- `./codeAnalysis.sh`
-- No remaining references to `TreeTrackerDAO` after final PR in the stack.
+- `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:verifyRoborazziDebug :app:ktlintCheck :app:detekt :app:lintDebug` all pass.
+- Manual QA checklist: fresh-install signup flow (incl. selfie capture
+  activity), existing-user splash → dashboard, capture loop (no stack growth),
+  settings logout / delete-profile stack clears, deep link cold start via
+  `adb shell am start -a android.intent.action.VIEW -d "app://mobile.treetracker.org/org?id=X&name=Y"`,
+  rotation + process-death restore on a deep screen, double-tap nav buttons.
