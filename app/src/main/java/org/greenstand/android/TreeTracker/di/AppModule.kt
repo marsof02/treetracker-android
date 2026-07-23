@@ -199,7 +199,7 @@ val appModule =
             ContextCompat.getSystemService(androidContext(), SensorManager::class.java) as SensorManager
         }
 
-        single { SessionTracker(get(), get(), get(), get(), get(), get()) }
+        single { SessionTracker(get(), get(), get(), get(), get(), get(), get(), get()) }
 
         single { StepCounter(get(), get()) }
 
@@ -233,7 +233,7 @@ val appModule =
 
         factory { PlanterUploader(get(), get(), get(), get()) }
 
-        factory { SessionUploader(get(), get(), get()) }
+        factory { SessionUploader(get(), get(), get(), get()) }
 
         factory { DeviceConfigUploader(get(), get(), get()) }
 
