@@ -82,13 +82,14 @@ fun BoxScope.ArrowButton(
     isEnabled: Boolean = true,
     colors: ButtonColors = AppButtonColors.ProgressGreen,
     isLeft: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     TreeTrackerButton(
         isEnabled = isEnabled,
         colors = colors,
         modifier =
-            Modifier
+            modifier
                 .align(Alignment.Center)
                 .size(height = 62.dp, width = 62.dp),
         onClick = onClick,

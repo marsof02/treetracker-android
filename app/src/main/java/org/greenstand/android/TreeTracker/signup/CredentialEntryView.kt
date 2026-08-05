@@ -45,6 +45,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -138,7 +139,7 @@ private fun CredentialBottomBar(
             }
         },
         rightAction = {
-            ArrowButton(isLeft = false) {
+            ArrowButton(isLeft = false, modifier = Modifier.testTag("signup_next")) {
                 if (state.isCredentialValid) {
                     onHandleAction(SignupAction.SubmitInfo)
                 } else {
